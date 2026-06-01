@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME, verifySession } from "@/lib/session";
 import { BASE_PATH } from "@/lib/base-path";
-import { prisma } from "@/lib/db";
 
 // Notes on basePath handling here:
 //  - `request.nextUrl.pathname` is ALREADY stripped of basePath, so the path
@@ -26,30 +25,16 @@ function redirectTo(request: NextRequest, location: string): NextResponse {
 export async function proxy(request: NextRequest) {  
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const payload = await verifySession(token);
 
-  let session = null;
-  let shouldClearCookie = false;
-  if (payload) {
-    const access = await prisma.clientAccess.findFirst({
-      where: { id: payload.accessId, isActive: true },
-      include: { client: true },
-    });
-    if (access && access.client.id === payload.clientId && access.client.isActive) {
-      session = payload;
-    } else {
-      shouldClearCookie = true;
-    }
-  }
-
-  // If the session is invalid, immediately clear the cookie.
-  if (shouldClearCookie) {
-    const response = pathname === "/login"
-      ? NextResponse.next()
-      : redirectTo(request, `${BASE_PATH}/login`);
-    response.cookies.delete(SESSION_COOKIE_NAME);
-    return response;
-  }
+  // Cryptographic (HMAC) verification ONLY — no database access in middleware.
+  // The session cookie is signed with APP_SECRET and cannot be forged, so it is
+  // a safe gate here. DB-backed authorization (is the ClientAccess still
+  // active?) runs in the Node-runtime route handlers / server components.
+  //
+  // Why no Prisma here: Netlify's middleware runtime cannot load Prisma's
+  // native query engine (libquery_engine-*.so.node), so importing the db
+  // client into middleware breaks the build with "unsupported C++ Addon(s)".
+  const session = await verifySession(token);
 
   // Unauthenticated health probe for nginx / load balancers / uptime monitors.
   if (pathname === "/api/health") {
@@ -87,7 +72,10 @@ export async function proxy(request: NextRequest) {
     const params = new URLSearchParams();
     if (pathname !== "/") params.set("next", pathname);
     const query = params.toString();
-    return redirectTo(request, `${BASE_PATH}/login${query ? `?${query}` : ""}`);
+    const response = redirectTo(request, `${BASE_PATH}/login${query ? `?${query}` : ""}`);
+    // Clear a stale/expired/forged cookie so the browser stops resending it.
+    if (token) response.cookies.delete(SESSION_COOKIE_NAME);
+    return response;
   }
 
   return NextResponse.next();
