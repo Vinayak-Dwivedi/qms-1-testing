@@ -60,28 +60,24 @@ Site settings → **Environment variables** → add (see `.env.netlify.example`)
 > validates env on import). Netlify exposes site env vars to the build by
 > default, so just adding them is enough.
 
-## Step 5 — Seed the database ONCE (out-of-band)
-
-The Netlify build no longer touches the DB (it only runs `prisma generate →
-next build` with build-only placeholders). So migrate + seed the Neon DB once,
-from your machine, pointing at the **real** Neon string:
-
-```powershell
-$env:DATABASE_URL = "postgresql://...your-neon-direct-url..."
-$env:APP_PASSWORD = "demo-password"
-npx prisma migrate deploy
-npx tsx prisma/seed.ts
-```
-
-This is a one-time step (re-run it only if you reset the DB). The seed is
-idempotent.
-
-## Step 6 — Deploy
+## Step 5 — Deploy
 
 Trigger a deploy (automatic on first import, or **Deploys → Trigger deploy**).
-The build runs `prisma generate → next build` and no longer depends on DB
-connectivity. When it's green, open the site, log in with `APP_PASSWORD`, and
-you'll see the seeded dashboard, calls, transcripts, and audit scores.
+Because the env vars are set with **All scopes**, the build has DB access and
+runs the full pipeline:
+
+```
+prisma generate → prisma migrate deploy → seed demo data → next build
+```
+
+So the schema + demo data load automatically — no manual seed step. The seed is
+idempotent, so every deploy returns the demo to a known-good state. When the
+build is green, open the site, log in with `APP_PASSWORD`, and you'll see the
+seeded dashboard, calls, transcripts, and audit scores.
+
+> If you ever scope the env vars to runtime-only (not Builds), the build can't
+> reach the DB — either re-add the **Builds** scope, or seed manually:
+> `$env:DATABASE_URL=...; npx prisma migrate deploy; npx tsx prisma/seed.ts`.
 
 ---
 

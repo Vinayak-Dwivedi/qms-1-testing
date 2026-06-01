@@ -4,31 +4,23 @@
 # part of this deploy — Netlify is serverless. The UI renders pre-seeded demo
 # data (prisma/seed.ts).
 #
-# IMPORTANT — two kinds of env vars:
-#   * BUILD-time: the placeholders in [build.environment] below let Prisma and
-#     `next build` validate the schema/config WITHOUT a real database. They are
-#     NOT secrets and are NOT used at runtime (Netlify build.environment values
-#     do not reach Functions).
-#   * RUNTIME: set the REAL values in the Netlify UI (Site configuration →
-#     Environment variables) so the deployed Functions use them:
-#       DATABASE_URL   real Neon connection string
-#       APP_SECRET     64-byte random secret
-#       APP_PASSWORD   demo login password
-#       APP_BASE_URL   https://<your-site>.netlify.app
-#
-# The database is migrated + seeded ONCE, out-of-band (not on every build) —
-# see docs/netlify-demo.md.
+# Required env vars — set the REAL values in the Netlify UI
+# (Site configuration → Environment variables) with scope = "All scopes" so
+# they're available at BUILD time (migrate + seed + config validation) AND at
+# runtime (the deployed Functions):
+#   DATABASE_URL   real Neon connection string
+#   APP_SECRET     64-byte random secret
+#   APP_PASSWORD   demo login password (the seed hashes this into the login)
+#   APP_BASE_URL   https://<your-site>.netlify.app
 
 [build]
-  command = "npx prisma generate && npx next build"
+  # generate client → apply migrations → seed demo data → build the app.
+  command = "npx prisma generate && npx prisma migrate deploy && npx tsx prisma/seed.ts && npx next build"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "22"
   NEXT_TELEMETRY_DISABLED = "1"
-  # --- BUILD-ONLY placeholders (not secrets, not used at runtime) ---
-  DATABASE_URL = "postgresql://user:pass@localhost:5432/placeholder?schema=public"
-  APP_SECRET = "netlify-build-only-placeholder-not-a-real-secret"
 
 # Netlify's official Next.js runtime — turns the app into serverless functions.
 [[plugins]]
