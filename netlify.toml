@@ -1,0 +1,28 @@
+# Netlify configuration — iLeads QMS (UI demo with seeded demo data)
+#
+# This deploys the Next.js web UI to Netlify as a demo. The background worker
+# (transcription/audit pipeline) does NOT run on Netlify — it needs a
+# persistent process. The UI shows pre-seeded demo data instead (prisma/seed.ts).
+#
+# Required site environment variables (Site settings → Environment variables):
+#   DATABASE_URL   Postgres connection string (use a Neon serverless DB).
+#                  Must be reachable from Netlify's build + functions.
+#   APP_SECRET     64-byte random string, >= 32 chars, not a placeholder.
+#                  node -e "console.log(require('crypto').randomBytes(64).toString('base64url'))"
+#   APP_PASSWORD   The workspace login password for the demo (e.g. "demo-password").
+#   APP_BASE_URL   Your deployed site URL, e.g. https://your-site.netlify.app
+# Optional (sensible demo defaults already in src/lib/config.ts):
+#   AUDIO_STORAGE_PROVIDER=local   MOCK_STT=true   SHOW_MOCK_ACTIONS=true
+
+[build]
+  # generate client → apply migrations → seed demo data → build the app.
+  command = "npx prisma generate && npx prisma migrate deploy && npx tsx prisma/seed.ts && npx next build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Netlify's official Next.js runtime — turns the app into serverless functions.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
